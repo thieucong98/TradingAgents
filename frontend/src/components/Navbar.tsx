@@ -1,5 +1,6 @@
 import React from 'react';
-import { Activity, Plus, Database, Terminal, FileText, Cpu, Settings, Menu, Keyboard } from 'lucide-react';
+import { Activity, Plus, Database, Terminal, FileText, Cpu, Settings, Menu, Keyboard, User, LogOut } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 interface NavbarProps {
   activeTab: 'arena' | 'report' | 'memory';
@@ -22,6 +23,7 @@ const NavbarComponent: React.FC<NavbarProps> = ({
   runningJobsCount,
   backendOnline,
 }) => {
+  const { user, logout, openChangePasswordModal } = useAuth();
   return (
     <header className="h-16 border-b border-dark-700/60 bg-dark-900 px-3 sm:px-5 flex items-center justify-between z-30 sticky top-0 shrink-0">
       {/* Brand & Status */}
@@ -141,6 +143,28 @@ const NavbarComponent: React.FC<NavbarProps> = ({
         >
           <Settings className="w-4 h-4" />
         </button>
+
+        {/* User Account & Logout Controls */}
+        {user && (
+          <div className="flex items-center space-x-1 pl-1 border-l border-dark-700/80">
+            <button
+              onClick={openChangePasswordModal}
+              title={`Logged in as ${user.username} - Click to change password`}
+              className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl bg-dark-800 hover:bg-dark-750 text-slate-300 hover:text-brand-cyan border border-dark-700/80 text-xs font-mono transition-colors"
+            >
+              <User className="w-3.5 h-3.5 text-brand-cyan" />
+              <span className="hidden sm:inline font-bold">{user.username}</span>
+            </button>
+
+            <button
+              onClick={logout}
+              title="Logout from Terminal"
+              className="p-2 rounded-xl bg-dark-800 hover:bg-brand-rose/15 text-slate-400 hover:text-brand-rose border border-dark-700/80 transition-colors"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         <button
           onClick={onOpenNewModal}

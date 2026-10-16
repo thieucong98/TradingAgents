@@ -38,6 +38,15 @@ class Settings:
         ]
     )
 
+    # Authentication & Security
+    SESSION_COOKIE_NAME: str = "tradingagents_session"
+    SESSION_EXPIRE_DAYS: int = int(os.getenv("SESSION_EXPIRE_DAYS", "7"))
+    ADMIN_USERNAME: str = os.getenv("TRADINGAGENTS_ADMIN_USER", "admin")
+    ADMIN_INITIAL_PASSWORD: str = os.getenv("TRADINGAGENTS_ADMIN_PASSWORD", "TradingAgents@2024")
+    MAX_LOGIN_ATTEMPTS: int = int(os.getenv("MAX_LOGIN_ATTEMPTS", "5"))
+    LOCKOUT_MINUTES: int = int(os.getenv("LOCKOUT_MINUTES", "15"))
+    SECURE_COOKIES: bool = os.getenv("SECURE_COOKIES", "false").lower() in ("true", "1", "yes")
+
 settings = Settings()
 settings.CACHE_DIR.mkdir(parents=True, exist_ok=True)
 settings.REPORTS_DIR.mkdir(parents=True, exist_ok=True)

@@ -8,32 +8,91 @@ import {
   APIKeysStatusResponse,
   DeleteJobResponse,
   BatchDeleteResponse,
-  ClearJobsResponse
+  ClearJobsResponse,
+  AuthStatus,
+  LoginPayload,
+  LoginResponse,
+  ChangePasswordPayload
 } from '../types';
 
 const API_BASE = '/api/v1';
 
+/**
+ * Standard fetch wrapper that guarantees credentials (HttpOnly cookies)
+ * are transmitted across the origin and proxy on every request.
+ */
+function authFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+  return fetch(input, {
+    ...init,
+    credentials: 'include',
+  });
+}
+
 async function handleResponse<T>(res: Response, fallbackMessage: string): Promise<T> {
   if (!res.ok) {
+    if (res.status === 401) {
+      // Notify authentication context of session expiration/invalid credentials
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+      }
+    }
     const errorData = await res.json().catch(() => ({}));
     throw new Error(errorData.detail || `${fallbackMessage}: ${res.statusText}`);
   }
   return res.json();
 }
 
+// -------------------------------------------------------------
+// Authentication Endpoints
+// -------------------------------------------------------------
+
+export async function checkAuthStatus(): Promise<AuthStatus> {
+  const res = await authFetch(`${API_BASE}/auth/status`);
+  return handleResponse(res, 'Failed to verify authentication status');
+}
+
+export async function login(payload: LoginPayload): Promise<LoginResponse> {
+  const res = await authFetch(`${API_BASE}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Login failed');
+}
+
+export async function logout(): Promise<{ success: boolean; message: string }> {
+  const res = await authFetch(`${API_BASE}/auth/logout`, {
+    method: 'POST',
+  });
+  return handleResponse(res, 'Logout failed');
+}
+
+export async function changePassword(payload: ChangePasswordPayload): Promise<{ success: boolean; message: string }> {
+  const res = await authFetch(`${API_BASE}/auth/change-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res, 'Failed to update password');
+}
+
+// -------------------------------------------------------------
+// Jobs & Analysis Endpoints
+// -------------------------------------------------------------
+
 export async function fetchJobs(status?: string): Promise<{ jobs: Job[]; total: number }> {
   const url = status ? `${API_BASE}/jobs?status=${encodeURIComponent(status)}` : `${API_BASE}/jobs`;
-  const res = await fetch(url);
+  const res = await authFetch(url);
   return handleResponse(res, 'Failed to fetch jobs');
 }
 
 export async function fetchJob(jobId: string): Promise<Job> {
-  const res = await fetch(`${API_BASE}/jobs/${jobId}`);
+  const res = await authFetch(`${API_BASE}/jobs/${jobId}`);
   return handleResponse(res, `Failed to fetch job ${jobId}`);
 }
 
 export async function createJob(payload: JobCreatePayload): Promise<Job> {
-  const res = await fetch(`${API_BASE}/jobs`, {
+  const res = await authFetch(`${API_BASE}/jobs`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -42,18 +101,18 @@ export async function createJob(payload: JobCreatePayload): Promise<Job> {
 }
 
 export async function cancelJob(jobId: string): Promise<{ message: string; status: string }> {
-  const res = await fetch(`${API_BASE}/jobs/${jobId}/cancel`, { method: 'POST' });
+  const res = await authFetch(`${API_BASE}/jobs/${jobId}/cancel`, { method: 'POST' });
   return handleResponse(res, `Failed to cancel job ${jobId}`);
 }
 
 export async function deleteJob(jobId: string, force: boolean = false): Promise<DeleteJobResponse> {
   const url = force ? `${API_BASE}/jobs/${jobId}?force=true` : `${API_BASE}/jobs/${jobId}`;
-  const res = await fetch(url, { method: 'DELETE' });
+  const res = await authFetch(url, { method: 'DELETE' });
   return handleResponse(res, `Failed to delete job ${jobId}`);
 }
 
 export async function batchDeleteJobs(jobIds: string[], force: boolean = false): Promise<BatchDeleteResponse> {
-  const res = await fetch(`${API_BASE}/jobs/batch-delete`, {
+  const res = await authFetch(`${API_BASE}/jobs/batch-delete`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ job_ids: jobIds, force }),
@@ -68,37 +127,45 @@ export async function clearJobsHistory(status?: string, allFinished: boolean = f
   } else if (allFinished) {
     url += 'all_finished=true';
   }
-  const res = await fetch(url, { method: 'DELETE' });
+  const res = await authFetch(url, { method: 'DELETE' });
   return handleResponse(res, 'Failed to clear jobs history');
 }
 
 export async function fetchReport(jobId: string): Promise<JobReport> {
-  const res = await fetch(`${API_BASE}/reports/${jobId}`);
-  return handleResponse(res, 'Failed to fetch report');
+  const res = await authFetch(`${API_BASE}/reports/${jobId}`);
+  return handleResponse(res, `Failed to fetch report for job ${jobId}`);
 }
 
 export async function fetchJobHistory(jobId: string): Promise<JobEvent[]> {
-  const res = await fetch(`${API_BASE}/jobs/${jobId}/history`);
-  return handleResponse(res, 'Failed to fetch job history');
+  const res = await authFetch(`${API_BASE}/jobs/${jobId}/history`);
+  return handleResponse(res, `Failed to fetch history for job ${jobId}`);
 }
 
 export async function fetchConfigOptions(): Promise<ConfigOptions> {
-  const res = await fetch(`${API_BASE}/config/options`);
-  return handleResponse(res, 'Failed to fetch config options');
+  const res = await authFetch(`${API_BASE}/config/options`);
+  return handleResponse(res, 'Failed to fetch configuration options');
 }
 
-export async function fetchMemoryLog(ticker?: string): Promise<{ total_entries: number; entries: MemoryEntry[] }> {
+export async function fetchMemoryLog(ticker?: string): Promise<{ entries: MemoryEntry[]; total: number }> {
   const url = ticker ? `${API_BASE}/memory?ticker=${encodeURIComponent(ticker)}` : `${API_BASE}/memory`;
-  const res = await fetch(url);
-  return handleResponse(res, 'Failed to fetch memory');
+  const res = await authFetch(url);
+  return handleResponse(res, 'Failed to fetch trading memories');
 }
+
+export const fetchMemories = fetchMemoryLog;
 
 export function subscribeToJobEvents(
   jobId: string,
   onEvent: (event: JobEvent) => void,
-  onError?: (err: any) => void
+  onConnected?: () => void,
+  onError?: (error: any) => void
 ): () => void {
+  // With same-origin / nginx proxying, EventSource transmits cookies automatically
   const eventSource = new EventSource(`${API_BASE}/jobs/${jobId}/events`);
+
+  eventSource.onopen = () => {
+    if (onConnected) onConnected();
+  };
 
   const handleMessage = (e: MessageEvent) => {
     try {
@@ -126,7 +193,7 @@ export function subscribeToJobEvents(
     }
   };
 
-  // Specific event type listeners
+  // Specific event type listeners matching backend EventSource generator
   const eventTypes = [
     'stage_change',
     'agent_completed',
@@ -159,14 +226,13 @@ export function subscribeToJobEvents(
   };
 }
 
-
 export async function fetchApiKeys(): Promise<APIKeysStatusResponse> {
-  const res = await fetch(`${API_BASE}/config/keys`);
+  const res = await authFetch(`${API_BASE}/config/keys`);
   return handleResponse(res, 'Failed to fetch API keys');
 }
 
 export async function updateApiKeys(keys: Record<string, string>): Promise<APIKeysStatusResponse> {
-  const res = await fetch(`${API_BASE}/config/keys`, {
+  const res = await authFetch(`${API_BASE}/config/keys`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ keys }),
@@ -212,5 +278,3 @@ export function downloadReportMarkdown(
   link.click();
   document.body.removeChild(link);
 }
-
-

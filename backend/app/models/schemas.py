@@ -106,3 +106,36 @@ class ClearJobsResponse(BaseModel):
     message: str
     deleted_count: int
 
+
+# Authentication & Security Schemas
+class UserProfile(BaseModel):
+    id: str
+    username: str
+    must_change_password: bool
+    created_at: str
+    last_login_at: str | None = None
+
+
+class LoginRequest(BaseModel):
+    username: str = Field(..., description="Username")
+    password: str = Field(..., description="Password")
+
+
+class LoginResponse(BaseModel):
+    success: bool
+    user: UserProfile
+    must_change_password: bool
+    session_token: str | None = None
+    message: str = "Login successful"
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(..., description="Current password")
+    new_password: str = Field(..., min_length=6, description="New password (minimum 6 characters)")
+
+
+class AuthStatusResponse(BaseModel):
+    authenticated: bool
+    user: UserProfile | None = None
+    must_change_password: bool = False
+

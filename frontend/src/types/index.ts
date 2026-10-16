@@ -131,3 +131,36 @@ export interface ClearJobsResponse {
   deleted_count: number;
 }
 
+// Authentication & Account Types
+export interface UserProfile {
+  id: string;
+  username: string;
+  must_change_password: boolean;
+  created_at: string;
+  last_login_at?: string | null;
+}
+
+export interface AuthStatus {
+  authenticated: boolean;
+  user: UserProfile | null;
+  must_change_password: boolean;
+}
+
+export interface LoginPayload {
+  username: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  success: boolean;
+  user: UserProfile;
+  must_change_password: boolean;
+  session_token?: string;
+  message: string;
+}
+
+export interface ChangePasswordPayload {
+  current_password: string;
+  new_password: string;
+}
+

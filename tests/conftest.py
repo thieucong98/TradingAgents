@@ -65,3 +65,27 @@ def mock_llm_client():
         return_value=client,
     ):
         yield client
+
+
+@pytest.fixture(autouse=True)
+def _mock_auth_for_tests(request):
+    """Ensure existing backend tests continue to execute smoothly by providing
+    authenticated user context, while letting test_auth_and_security test real auth."""
+    if "test_auth_and_security" in request.node.nodeid:
+        yield
+        return
+
+    try:
+        from backend.app.core.auth import get_current_user
+        from backend.app.main import app
+
+        app.dependency_overrides[get_current_user] = lambda: {
+            "id": "test-admin-id",
+            "username": "admin",
+            "must_change_password": 0,
+            "created_at": "2026-01-01T00:00:00",
+        }
+        yield
+        app.dependency_overrides.pop(get_current_user, None)
+    except Exception:
+        yield
