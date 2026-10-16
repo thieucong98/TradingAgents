@@ -1,6 +1,7 @@
 import json
+import secrets
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -76,7 +77,54 @@ class Database:
             CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
             CREATE INDEX IF NOT EXISTS idx_jobs_created_at ON jobs(created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_job_events_job_id ON job_events(job_id, id ASC);
+
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                salt TEXT NOT NULL,
+                must_change_password INTEGER DEFAULT 1,
+                failed_login_attempts INTEGER DEFAULT 0,
+                locked_until TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                last_login_at TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS user_sessions (
+                token_hash TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                ip_address TEXT,
+                user_agent TEXT,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON user_sessions(user_id);
+            CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON user_sessions(expires_at);
             """)
+            self._init_admin_user(conn)
+
+    def _init_admin_user(self, conn: sqlite3.Connection):
+        """Seed default admin user if users table is empty."""
+        from .auth import hash_password
+
+        row = conn.execute("SELECT COUNT(*) as count FROM users").fetchone()
+        if row and row["count"] == 0:
+            now_str = datetime.utcnow().isoformat()
+            user_id = secrets.token_hex(8)
+            pwd_hash, salt = hash_password(settings.ADMIN_INITIAL_PASSWORD)
+            conn.execute(
+                """
+                INSERT INTO users (
+                    id, username, password_hash, salt, must_change_password,
+                    failed_login_attempts, locked_until, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, 1, 0, NULL, ?, ?)
+                """,
+                (user_id, settings.ADMIN_USERNAME, pwd_hash, salt, now_str, now_str),
+            )
+            conn.commit()
 
     # Jobs Operations
     def create_job(self, job_dict: dict[str, Any]) -> dict[str, Any]:
@@ -286,5 +334,170 @@ class Database:
             if res.get("final_state"):
                 res["final_state"] = json.loads(res["final_state"])
             return res
+
+    # -------------------------------------------------------------
+    # User & Authentication Operations
+    # -------------------------------------------------------------
+    def get_user_by_username(self, username: str) -> dict[str, Any] | None:
+        """Fetch user record by unique username."""
+        with self.get_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM users WHERE username = ?",
+                (username.strip(),),
+            ).fetchone()
+            return dict(row) if row else None
+
+    def get_user_by_id(self, user_id: str) -> dict[str, Any] | None:
+        """Fetch user record by user ID."""
+        with self.get_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM users WHERE id = ?",
+                (user_id,),
+            ).fetchone()
+            return dict(row) if row else None
+
+    def record_login_failure(
+        self, username: str, max_attempts: int, lockout_minutes: int
+    ) -> dict[str, Any] | None:
+        """Increment failed attempts and lock account if threshold exceeded."""
+        user = self.get_user_by_username(username)
+        if not user:
+            return None
+
+        attempts = user.get("failed_login_attempts", 0) + 1
+        now = datetime.utcnow()
+        locked_until = None
+
+        if attempts >= max_attempts:
+            locked_until = (now + timedelta(minutes=lockout_minutes)).isoformat()
+
+        with self.get_connection() as conn:
+            conn.execute(
+                """
+                UPDATE users
+                SET failed_login_attempts = ?, locked_until = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (attempts, locked_until, now.isoformat(), user["id"]),
+            )
+            conn.commit()
+
+        user["failed_login_attempts"] = attempts
+        user["locked_until"] = locked_until
+        return user
+
+    def record_login_success(self, user_id: str) -> None:
+        """Reset failed login counter and update last login timestamp."""
+        now = datetime.utcnow().isoformat()
+        with self.get_connection() as conn:
+            conn.execute(
+                """
+                UPDATE users
+                SET failed_login_attempts = 0, locked_until = NULL, last_login_at = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (now, now, user_id),
+            )
+            conn.commit()
+
+    def update_user_password(
+        self,
+        user_id: str,
+        new_hash: str,
+        new_salt: str,
+        keep_token_hash: str | None = None,
+    ) -> bool:
+        """Update password hash, reset must_change_password flag, and revoke other sessions."""
+        now = datetime.utcnow().isoformat()
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                """
+                UPDATE users
+                SET password_hash = ?, salt = ?, must_change_password = 0, updated_at = ?
+                WHERE id = ?
+                """,
+                (new_hash, new_salt, now, user_id),
+            )
+            if keep_token_hash:
+                conn.execute(
+                    "DELETE FROM user_sessions WHERE user_id = ? AND token_hash != ?",
+                    (user_id, keep_token_hash),
+                )
+            else:
+                conn.execute(
+                    "DELETE FROM user_sessions WHERE user_id = ?",
+                    (user_id,),
+                )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    # -------------------------------------------------------------
+    # Session Management Operations
+    # -------------------------------------------------------------
+    def create_session(
+        self,
+        token_hash: str,
+        user_id: str,
+        expires_at: str,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+    ) -> None:
+        """Store active session token hash in database."""
+        now = datetime.utcnow().isoformat()
+        with self.get_connection() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO user_sessions (
+                    token_hash, user_id, created_at, expires_at, ip_address, user_agent
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (token_hash, user_id, now, expires_at, ip_address, user_agent),
+            )
+            conn.commit()
+
+    def get_user_by_session(self, token_hash: str) -> dict[str, Any] | None:
+        """Retrieve user associated with valid, non-expired session."""
+        now = datetime.utcnow().isoformat()
+        with self.get_connection() as conn:
+            row = conn.execute(
+                """
+                SELECT u.id, u.username, u.must_change_password, u.created_at, u.last_login_at
+                FROM user_sessions s
+                JOIN users u ON s.user_id = u.id
+                WHERE s.token_hash = ? AND s.expires_at > ?
+                """,
+                (token_hash, now),
+            ).fetchone()
+            return dict(row) if row else None
+
+    def delete_session(self, token_hash: str) -> bool:
+        """Revoke a single session token (logout)."""
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                "DELETE FROM user_sessions WHERE token_hash = ?",
+                (token_hash,),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def delete_all_user_sessions(self, user_id: str) -> None:
+        """Revoke all active sessions for a user (after password change or security reset)."""
+        with self.get_connection() as conn:
+            conn.execute(
+                "DELETE FROM user_sessions WHERE user_id = ?",
+                (user_id,),
+            )
+            conn.commit()
+
+    def cleanup_expired_sessions(self) -> int:
+        """Purge expired sessions from database."""
+        now = datetime.utcnow().isoformat()
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                "DELETE FROM user_sessions WHERE expires_at <= ?",
+                (now,),
+            )
+            conn.commit()
+            return cursor.rowcount
 
 db = Database()

@@ -13,8 +13,12 @@ import {
   Save, 
   ShieldCheck, 
   AlertCircle,
-  Cpu
+  Cpu,
+  LogOut,
+  KeyRound,
+  User
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import { APIKeyInfo } from '../types';
 import { fetchApiKeys, updateApiKeys } from '../services/api';
 import { 
@@ -31,7 +35,8 @@ interface SettingsModalProps {
 }
 
 const SettingsModalComponent: React.FC<SettingsModalProps> = ({ isOpen, onClose }) => {
-  const [activeTab, setActiveTab] = useState<'llm' | 'data' | 'preferences'>('llm');
+  const { user, logout, openChangePasswordModal } = useAuth();
+  const [activeTab, setActiveTab] = useState<'llm' | 'data' | 'preferences' | 'account'>('llm');
   const [keysList, setKeysList] = useState<APIKeyInfo[]>([]);
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
@@ -177,6 +182,18 @@ const SettingsModalComponent: React.FC<SettingsModalProps> = ({ isOpen, onClose 
             <Volume2 className="w-3.5 h-3.5" />
             <span>Terminal Audio & Alerts</span>
           </button>
+
+          <button
+            onClick={() => setActiveTab('account')}
+            className={`flex items-center space-x-2 py-2.5 sm:py-3 px-3 text-xs font-semibold border-b-2 transition-all whitespace-nowrap shrink-0 ${
+              activeTab === 'account'
+                ? 'border-brand-cyan text-brand-cyan'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span>Account & Security</span>
+          </button>
         </div>
 
         {/* Body Content */}
@@ -192,6 +209,58 @@ const SettingsModalComponent: React.FC<SettingsModalProps> = ({ isOpen, onClose 
             <div className="p-3 rounded-lg bg-brand-emerald/10 border border-brand-emerald/30 flex items-center space-x-2 text-xs text-brand-emerald">
               <ShieldCheck className="w-4 h-4 flex-shrink-0" />
               <span>Settings and API credentials updated successfully!</span>
+            </div>
+          )}
+
+          {/* Account & Security Tab */}
+          {activeTab === 'account' && (
+            <div className="space-y-4 animate-fadeIn">
+              <div className="p-4 rounded-xl bg-dark-850/50 border border-dark-700/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2.5 rounded-lg border bg-brand-cyan/10 border-brand-cyan/30 text-brand-cyan">
+                    <User className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-200">
+                      Logged in as <span className="text-brand-cyan font-mono">{user?.username || 'admin'}</span>
+                    </h4>
+                    <p className="text-[11px] text-slate-400 font-mono">
+                      Active VPS Session • Single-tenant Administrator
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      openChangePasswordModal();
+                    }}
+                    className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-dark-800 hover:bg-dark-750 text-slate-200 border border-dark-700 text-xs font-mono font-medium transition-colors"
+                  >
+                    <KeyRound className="w-3.5 h-3.5 text-brand-cyan" />
+                    <span>Change Password</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      logout();
+                    }}
+                    className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-brand-rose/15 hover:bg-brand-rose/25 text-brand-rose border border-brand-rose/40 text-xs font-mono font-medium transition-colors"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Log Out</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-dark-900 border border-dark-700/60 text-xs font-mono text-slate-400 leading-relaxed space-y-1.5">
+                <div className="font-bold text-slate-300">Security Architecture & Best Practices:</div>
+                <div>• Passwords are cryptographically hashed using PBKDF2-HMAC-SHA256 (600,000 rounds).</div>
+                <div>• Session tokens are stored as SHA-256 digests and transported via HttpOnly, SameSite=Lax cookies.</div>
+                <div>• Public VPS access is protected by rate limiting and brute-force account lockout.</div>
+              </div>
             </div>
           )}
 

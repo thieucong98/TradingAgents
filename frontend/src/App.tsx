@@ -1,4 +1,7 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { LoginView } from './components/LoginView';
+import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { Navbar } from './components/Navbar';
 import { JobSidebar } from './components/JobSidebar';
 import { LiveAgentArena } from './components/LiveAgentArena';
@@ -24,7 +27,7 @@ import {
   subscribeToJobEvents 
 } from './services/api';
 
-export const App: React.FC = () => {
+const MainDashboard: React.FC = () => {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'arena' | 'report' | 'memory'>('arena');
@@ -148,7 +151,7 @@ export const App: React.FC = () => {
     // Load initial events from DB
     fetchJobHistory(selectedJobId)
       .then((history) => {
-        if (isMounted) setJobEvents(history);
+        if (isMounted) setJobEvents(history || []);
       })
       .catch((err) => console.error('Failed to load history:', err));
 
@@ -173,7 +176,8 @@ export const App: React.FC = () => {
           });
         }
       },
-      (err) => {
+      () => {},
+      (err: any) => {
         console.warn('SSE stream notice:', err);
       }
     );
@@ -349,9 +353,50 @@ export const App: React.FC = () => {
         isOpen={isShortcutsOpen}
         onClose={handleCloseShortcuts}
       />
-
-      {/* Global In-App Toast Container */}
-      <ToastContainer />
     </div>
+  );
+};
+
+const AppContent: React.FC = () => {
+  const {
+    isAuthenticated,
+    isLoading,
+    mustChangePassword,
+    isChangePasswordOpen,
+    closeChangePasswordModal,
+  } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-dark-950 flex flex-col items-center justify-center space-y-3 font-mono text-slate-400">
+        <div className="w-8 h-8 border-2 border-brand-cyan border-t-transparent rounded-full animate-spin" />
+        <p className="text-xs">Authenticating VPS Session...</p>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <LoginView />;
+  }
+
+  return (
+    <>
+      <MainDashboard />
+      {isChangePasswordOpen && (
+        <ChangePasswordModal
+          mustChange={mustChangePassword}
+          onClose={closeChangePasswordModal}
+        />
+      )}
+    </>
+  );
+};
+
+export const App: React.FC = () => {
+  return (
+    <AuthProvider>
+      <AppContent />
+      <ToastContainer />
+    </AuthProvider>
   );
 };
