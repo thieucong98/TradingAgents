@@ -272,4 +272,47 @@ def test_api_keys_config_endpoints():
     assert openai_cleaned["configured"] is False
 
 
+def test_concurrency_config_endpoints():
+    # 1. GET concurrency config
+    res = client.get("/api/v1/config/concurrency")
+    assert res.status_code == 200
+    data = res.json()
+    assert "max_concurrent_jobs" in data
+    assert "active_running_jobs" in data
+    assert data["max_concurrent_jobs"] >= 1
+    assert data["recommended_min"] == 1
+    assert data["recommended_max"] == 16
+
+    # 2. POST update concurrency limit
+    update_res = client.post(
+        "/api/v1/config/concurrency",
+        json={"max_concurrent_jobs": 8}
+    )
+    assert update_res.status_code == 200
+    updated_data = update_res.json()
+    assert updated_data["max_concurrent_jobs"] == 8
+
+    # 3. Verify bounds validation (out-of-bounds 0 or > 32 should fail validation)
+    bad_res_low = client.post(
+        "/api/v1/config/concurrency",
+        json={"max_concurrent_jobs": 0}
+    )
+    assert bad_res_low.status_code == 422
+
+    bad_res_high = client.post(
+        "/api/v1/config/concurrency",
+        json={"max_concurrent_jobs": 50}
+    )
+    assert bad_res_high.status_code == 422
+
+    # 4. Restore default concurrency to 4
+    restore_res = client.post(
+        "/api/v1/config/concurrency",
+        json={"max_concurrent_jobs": 4}
+    )
+    assert restore_res.status_code == 200
+    assert restore_res.json()["max_concurrent_jobs"] == 4
+
+
+
 

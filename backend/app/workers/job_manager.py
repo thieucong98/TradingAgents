@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import os
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -36,6 +37,15 @@ class JobManager:
     """Manages multi-job concurrency, worker thread pool, and real-time SSE event dispatching."""
 
     def __init__(self, max_workers: int = settings.MAX_CONCURRENT_JOBS):
+        # Restore persisted concurrency from mounted data volume if present
+        cfg_file = settings.DATA_DIR / "runtime_config.json"
+        if cfg_file.exists():
+            with contextlib.suppress(Exception):
+                cfg = json.loads(cfg_file.read_text(encoding="utf-8"))
+                if "max_concurrent_jobs" in cfg:
+                    max_workers = int(cfg["max_concurrent_jobs"])
+                    settings.MAX_CONCURRENT_JOBS = max_workers
+
         self.max_workers = max_workers
         self.executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="ta_worker")
         self._running_tasks: dict[str, asyncio.Task] = {}
@@ -43,6 +53,60 @@ class JobManager:
         # job_id -> set of asyncio.Queue for live SSE streaming clients
         self._event_subscribers: dict[str, set[asyncio.Queue]] = {}
         self._lock = asyncio.Lock()
+
+    def get_active_running_count(self) -> int:
+        """Return the number of currently executing worker tasks."""
+        return len(self._running_tasks)
+
+    def update_concurrency(self, new_max_workers: int) -> int:
+        """Dynamically update maximum concurrent worker jobs and persist to environment."""
+        new_max_workers = max(1, min(32, int(new_max_workers)))
+        self.max_workers = new_max_workers
+        # Python ThreadPoolExecutor allows dynamically tuning _max_workers
+        self.executor._max_workers = new_max_workers
+        settings.MAX_CONCURRENT_JOBS = new_max_workers
+        os.environ["TRADINGAGENTS_MAX_CONCURRENT_JOBS"] = str(new_max_workers)
+
+        # Persist to data volume and .env file
+        self._persist_concurrency_to_env(new_max_workers)
+        logger.info(f"Updated dynamic concurrency limit to {new_max_workers} worker(s)")
+        return self.max_workers
+
+    def _persist_concurrency_to_env(self, workers: int) -> None:
+        """Helper to write concurrency setting to persistent data dir and .env if present."""
+        # 1. Save to mounted DATA_DIR (persists across container recreation)
+        try:
+            cfg_file = settings.DATA_DIR / "runtime_config.json"
+            cfg = {}
+            if cfg_file.exists():
+                with contextlib.suppress(Exception):
+                    cfg = json.loads(cfg_file.read_text(encoding="utf-8"))
+            cfg["max_concurrent_jobs"] = workers
+            cfg_file.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+        except Exception as e:
+            logger.warning(f"Could not persist concurrency to runtime_config.json: {e}")
+
+        # 2. Also save to PROJECT_ROOT / .env if accessible
+        try:
+            env_path = settings.PROJECT_ROOT / ".env"
+            if env_path.exists():
+                content = env_path.read_text(encoding="utf-8")
+                var_name = "TRADINGAGENTS_MAX_CONCURRENT_JOBS"
+                lines = content.splitlines()
+                found = False
+                new_lines = []
+                for line in lines:
+                    stripped = line.strip()
+                    if stripped.startswith(f"{var_name}=") or stripped.startswith(f"#{var_name}="):
+                        new_lines.append(f"{var_name}={workers}")
+                        found = True
+                    else:
+                        new_lines.append(line)
+                if not found:
+                    new_lines.append(f"{var_name}={workers}")
+                env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+        except Exception as e:
+            logger.warning(f"Could not persist concurrency setting to .env: {e}")
 
     def subscribe(self, job_id: str) -> asyncio.Queue:
         """Subscribe to real-time events for a specific job (used by SSE endpoint)."""
