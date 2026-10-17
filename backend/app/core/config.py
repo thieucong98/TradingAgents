@@ -10,6 +10,7 @@ class Settings:
     PROJECT_NAME: str = "TradingAgents Pro Web API"
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
+    PROJECT_ROOT: Path = PROJECT_ROOT
 
     # Storage
     DATA_DIR: Path = DATA_DIR

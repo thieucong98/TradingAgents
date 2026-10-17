@@ -16,11 +16,18 @@ import {
   Cpu,
   LogOut,
   KeyRound,
-  User
+  User,
+  Zap,
+  SlidersHorizontal
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { APIKeyInfo } from '../types';
-import { fetchApiKeys, updateApiKeys } from '../services/api';
+import { 
+  fetchApiKeys, 
+  updateApiKeys, 
+  fetchConcurrencyConfig, 
+  updateConcurrencyConfig 
+} from '../services/api';
 import { 
   isSoundEnabled, 
   setSoundEnabled, 
@@ -48,22 +55,35 @@ const SettingsModalComponent: React.FC<SettingsModalProps> = ({ isOpen, onClose 
   const [soundOn, setSoundOn] = useState(true);
   const [notifyOn, setNotifyOn] = useState(true);
 
+  // Concurrency states
+  const [concurrency, setConcurrency] = useState<number>(4);
+  const [initialConcurrency, setInitialConcurrency] = useState<number>(4);
+  const [activeRunningJobs, setActiveRunningJobs] = useState<number>(0);
+
   useEffect(() => {
     if (isOpen) {
       setSoundOn(isSoundEnabled());
       setNotifyOn(isNotificationsEnabled());
-      loadKeys();
+      loadSettings();
     }
   }, [isOpen]);
 
-  const loadKeys = async () => {
+  const loadSettings = async () => {
     try {
       setLoading(true);
-      const res = await fetchApiKeys();
-      setKeysList(res.keys || []);
+      const [keysRes, concRes] = await Promise.all([
+        fetchApiKeys().catch(() => ({ keys: [] })),
+        fetchConcurrencyConfig().catch(() => ({ max_concurrent_jobs: 4, active_running_jobs: 0, recommended_min: 1, recommended_max: 16 })),
+      ]);
+      setKeysList(keysRes.keys || []);
+      if (concRes) {
+        setConcurrency(concRes.max_concurrent_jobs || 4);
+        setInitialConcurrency(concRes.max_concurrent_jobs || 4);
+        setActiveRunningJobs(concRes.active_running_jobs || 0);
+      }
     } catch (err: any) {
-      console.error('Failed to load API keys:', err);
-      setErrorMsg('Failed to load API keys from server.');
+      console.error('Failed to load settings:', err);
+      setErrorMsg('Failed to load configuration from server.');
     } finally {
       setLoading(false);
     }
@@ -88,6 +108,13 @@ const SettingsModalComponent: React.FC<SettingsModalProps> = ({ isOpen, onClose 
       // Save preferences
       setSoundEnabled(soundOn);
       setNotificationsEnabled(notifyOn);
+
+      // Save concurrency if modified
+      if (concurrency !== initialConcurrency) {
+        const updatedConc = await updateConcurrencyConfig(concurrency);
+        setConcurrency(updatedConc.max_concurrent_jobs);
+        setInitialConcurrency(updatedConc.max_concurrent_jobs);
+      }
 
       // Save keys if modified
       const keysToUpdate: Record<string, string> = {};
@@ -179,8 +206,8 @@ const SettingsModalComponent: React.FC<SettingsModalProps> = ({ isOpen, onClose 
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Volume2 className="w-3.5 h-3.5" />
-            <span>Terminal Audio & Alerts</span>
+            <SlidersHorizontal className="w-3.5 h-3.5" />
+            <span>Concurrency & Alerts</span>
           </button>
 
           <button
@@ -329,9 +356,89 @@ const SettingsModalComponent: React.FC<SettingsModalProps> = ({ isOpen, onClose 
             </div>
           )}
 
-          {/* Preferences Tab */}
+          {/* Preferences & Concurrency Tab */}
           {activeTab === 'preferences' && (
-            <div className="space-y-4">
+            <div className="space-y-4 animate-fadeIn">
+              {/* Concurrency & Multi-Worker Engine */}
+              <div className="p-4 rounded-xl bg-dark-850/50 border border-dark-700/60 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-dark-750">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2.5 rounded-lg border bg-brand-cyan/10 border-brand-cyan/30 text-brand-cyan">
+                      <Cpu className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-200">Concurrent Analysis Workers</h4>
+                      <p className="text-[11px] text-slate-400">Number of heavy agent research jobs allowed to run simultaneously</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-2 self-start sm:self-auto">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-mono font-bold bg-dark-800 text-brand-cyan border border-brand-cyan/30">
+                      {concurrency} Workers
+                    </span>
+                    <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md text-[10px] font-mono text-slate-400 bg-dark-800 border border-dark-700">
+                      <span className={`w-1.5 h-1.5 rounded-full ${activeRunningJobs > 0 ? 'bg-brand-emerald animate-pulse' : 'bg-slate-500'}`} />
+                      <span>{activeRunningJobs} Active</span>
+                    </span>
+                  </div>
+                </div>
+
+                {/* Range Slider */}
+                <div className="space-y-2">
+                  <div className="flex justify-between text-[11px] font-mono text-slate-400">
+                    <span>1 (Sequential)</span>
+                    <span className="text-brand-cyan font-bold text-xs">{concurrency} Parallel Jobs</span>
+                    <span>16 (Max Load)</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={1}
+                    max={16}
+                    step={1}
+                    value={concurrency}
+                    onChange={(e) => {
+                      setConcurrency(parseInt(e.target.value, 10));
+                      setSaveSuccess(false);
+                    }}
+                    className="w-full h-2 bg-dark-750 rounded-lg appearance-none cursor-pointer accent-brand-cyan"
+                  />
+                  <div className="flex justify-between text-[9px] font-mono text-slate-500 px-1">
+                    <span>1</span>
+                    <span>4 (Default)</span>
+                    <span>8 (Standard VPS)</span>
+                    <span>12</span>
+                    <span>16</span>
+                  </div>
+                </div>
+
+                {/* Hardware Recommendation Card based on value */}
+                <div className={`p-3 rounded-lg border text-xs font-mono transition-all ${
+                  concurrency <= 4
+                    ? 'bg-dark-900 border-dark-700/60 text-slate-400'
+                    : concurrency <= 8
+                    ? 'bg-brand-cyan/5 border-brand-cyan/20 text-brand-cyan/90'
+                    : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                }`}>
+                  <div className="flex items-start space-x-2">
+                    <Zap className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-bold">
+                        {concurrency <= 4
+                          ? 'Recommended for 2 Cores / 4GB RAM VPS'
+                          : concurrency <= 8
+                          ? 'Recommended for 4 Cores / 8GB RAM VPS'
+                          : 'High Concurrency: Recommended for 8+ Cores / 16GB+ RAM VPS'}
+                      </div>
+                      <p className="text-[11px] opacity-80 mt-0.5">
+                        {concurrency > 8
+                          ? 'Notice: Running > 8 jobs in parallel generates ~40-60 simultaneous LLM calls. Ensure your LLM provider plan has adequate TPM/RPM limits to avoid HTTP 429 throttling.'
+                          : 'Workers run in non-blocking thread pool backed by SQLite WAL mode. Jobs exceeding capacity queue automatically.'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Sound Option */}
               <div className="p-4 rounded-xl bg-dark-850/40 border border-dark-700/60 flex items-center justify-between">
                 <div className="flex items-center space-x-3">

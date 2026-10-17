@@ -16,8 +16,11 @@ from ...models.schemas import (  # noqa: E402
     APIKeysStatusResponse,
     APIKeysUpdateRequest,
     ConfigOptionsResponse,
+    ConcurrencyConfigResponse,
+    ConcurrencyUpdateRequest,
 )
 from ...core.security import mask_secret_key
+from ...workers.job_manager import job_manager
 
 router = APIRouter(prefix="/config", tags=["Configuration"])
 
@@ -164,4 +167,28 @@ async def update_api_keys(payload: APIKeysUpdateRequest):
                 elif new_val == "":  # Explicit clear
                     os.environ.pop(item["env_var"], None)
     return await get_api_keys_status()
+
+
+@router.get("/concurrency", response_model=ConcurrencyConfigResponse)
+async def get_concurrency_config():
+    """Retrieve current worker concurrency limit and active load."""
+    return ConcurrencyConfigResponse(
+        max_concurrent_jobs=job_manager.max_workers,
+        active_running_jobs=job_manager.get_active_running_count(),
+        recommended_min=1,
+        recommended_max=16,
+    )
+
+
+@router.post("/concurrency", response_model=ConcurrencyConfigResponse)
+async def update_concurrency_config(payload: ConcurrencyUpdateRequest):
+    """Dynamically adjust worker concurrency limit and persist setting."""
+    updated_workers = job_manager.update_concurrency(payload.max_concurrent_jobs)
+    return ConcurrencyConfigResponse(
+        max_concurrent_jobs=updated_workers,
+        active_running_jobs=job_manager.get_active_running_count(),
+        recommended_min=1,
+        recommended_max=16,
+    )
+
 

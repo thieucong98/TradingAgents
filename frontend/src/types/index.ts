@@ -164,3 +164,11 @@ export interface ChangePasswordPayload {
   new_password: string;
 }
 
+export interface ConcurrencyConfig {
+  max_concurrent_jobs: number;
+  active_running_jobs: number;
+  recommended_min: number;
+  recommended_max: number;
+}
+
+

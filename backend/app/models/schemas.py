@@ -107,6 +107,23 @@ class ClearJobsResponse(BaseModel):
     deleted_count: int
 
 
+# Concurrency & Worker Management Schemas
+class ConcurrencyConfigResponse(BaseModel):
+    max_concurrent_jobs: int = Field(..., description="Maximum concurrent worker jobs permitted")
+    active_running_jobs: int = Field(..., description="Currently active running worker jobs")
+    recommended_min: int = Field(1, description="Minimum recommended concurrent jobs")
+    recommended_max: int = Field(16, description="Maximum recommended concurrent jobs for single VPS")
+
+
+class ConcurrencyUpdateRequest(BaseModel):
+    max_concurrent_jobs: int = Field(
+        ...,
+        ge=1,
+        le=32,
+        description="Updated maximum concurrent worker jobs (bounded 1 to 32)",
+    )
+
+
 # Authentication & Security Schemas
 class UserProfile(BaseModel):
     id: str

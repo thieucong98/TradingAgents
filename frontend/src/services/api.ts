@@ -12,7 +12,8 @@ import {
   AuthStatus,
   LoginPayload,
   LoginResponse,
-  ChangePasswordPayload
+  ChangePasswordPayload,
+  ConcurrencyConfig
 } from '../types';
 
 const API_BASE = '/api/v1';
@@ -238,6 +239,20 @@ export async function updateApiKeys(keys: Record<string, string>): Promise<APIKe
     body: JSON.stringify({ keys }),
   });
   return handleResponse(res, 'Failed to update API keys');
+}
+
+export async function fetchConcurrencyConfig(): Promise<ConcurrencyConfig> {
+  const res = await authFetch(`${API_BASE}/config/concurrency`);
+  return handleResponse(res, 'Failed to fetch concurrency settings');
+}
+
+export async function updateConcurrencyConfig(maxConcurrentJobs: number): Promise<ConcurrencyConfig> {
+  const res = await authFetch(`${API_BASE}/config/concurrency`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ max_concurrent_jobs: maxConcurrentJobs }),
+  });
+  return handleResponse(res, 'Failed to update concurrency settings');
 }
 
 export function getReportDownloadUrl(jobId: string, tab: string = 'complete'): string {
