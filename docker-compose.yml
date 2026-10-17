@@ -39,7 +39,7 @@ services:
     env_file:
       - .env
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     restart: unless-stopped
     volumes:
       - tradingagents_data:/home/appuser/.tradingagents
@@ -59,7 +59,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "5173:80"
+      - "127.0.0.1:5173:80"
     restart: unless-stopped
     depends_on:
       tradingagents-backend:

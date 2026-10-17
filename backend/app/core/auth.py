@@ -74,7 +74,21 @@ def get_current_user(
     request: Request,
     bearer: HTTPAuthorizationCredentials | None = Depends(security_bearer),
 ) -> dict[str, Any]:
-    """FastAPI dependency to extract and authenticate current user via cookie or Bearer token."""
+    """FastAPI dependency to extract and authenticate current user via cookie, Bearer token, or Internal Service Token."""
+    # 0. Check Internal Service Pre-Shared Token (for microservice pipelines e.g. trading-podcast)
+    internal_token = (
+        request.headers.get("X-Internal-Token")
+        or request.headers.get("X-API-Key")
+        or (bearer.credentials if bearer else None)
+    )
+    configured_internal_token = os.getenv("TRADINGAGENTS_INTERNAL_TOKEN")
+    if configured_internal_token and internal_token and hmac.compare_digest(internal_token, configured_internal_token):
+        return {
+            "id": "internal_service",
+            "username": "internal_pipeline",
+            "role": "system",
+            "must_change_password": False,
+        }
     # Delay database import to prevent circular dependency
     from .database import db
 
