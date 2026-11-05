@@ -11,16 +11,16 @@ if str(PROJECT_ROOT) not in sys.path:
 from tradingagents.default_config import DEFAULT_CONFIG  # noqa: E402
 from tradingagents.llm_clients.model_catalog import MODEL_OPTIONS  # noqa: E402
 
+from ...core.security import mask_secret_key  # noqa: E402
 from ...models.schemas import (  # noqa: E402
     APIKeyInfo,
     APIKeysStatusResponse,
     APIKeysUpdateRequest,
-    ConfigOptionsResponse,
     ConcurrencyConfigResponse,
     ConcurrencyUpdateRequest,
+    ConfigOptionsResponse,
 )
-from ...core.security import mask_secret_key
-from ...workers.job_manager import job_manager
+from ...workers.job_manager import job_manager  # noqa: E402
 
 router = APIRouter(prefix="/config", tags=["Configuration"])
 

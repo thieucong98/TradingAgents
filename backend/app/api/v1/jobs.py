@@ -2,7 +2,6 @@ import asyncio
 import json
 import logging
 import shutil
-from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, status
 from sse_starlette.sse import EventSourceResponse
@@ -230,7 +229,7 @@ async def stream_job_events(job_id: str):
                     }
                     if ev["event_type"] in ("job_completed", "job_failed", "job_cancelled"):
                         break
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     # Send periodic ping to prevent connection timeout
                     yield {"event": "ping", "data": json.dumps({"status": "alive"})}
         except asyncio.CancelledError:

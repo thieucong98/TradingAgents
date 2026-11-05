@@ -22,7 +22,7 @@ from tradingagents.default_config import DEFAULT_CONFIG  # noqa: E402
 from tradingagents.graph.trading_graph import TradingAgentsGraph  # noqa: E402
 from tradingagents.reporting import write_report_tree  # noqa: E402
 
-from ..core.security import sanitize_sensitive_text
+from ..core.security import sanitize_sensitive_text  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
