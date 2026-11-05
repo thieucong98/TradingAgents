@@ -33,7 +33,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev,web]"
       - name: Run test suite
-        run: pytest -q --tb=short -ra
+        run: |
+          set -o pipefail
+          pytest -ra --tb=short 2>&1 | tee test_results.log
+      - name: Report summary to GitHub
+        if: always()
+        run: |
+          echo "## Pytest Run Summary (py${{ matrix.python-version }})" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          tail -n 120 test_results.log >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
   smoke-install:
     name: clean-install smoke
