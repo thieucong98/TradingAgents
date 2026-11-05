@@ -35,6 +35,21 @@ dev = [
     "ruff>=0.16",
     "pytest>=8.0",
     "pytest-subtests>=0.13",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "sse-starlette>=2.2.1",
+    "aiosqlite>=0.20.0",
+    "httpx>=0.28.0",
+]
+web = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "pydantic>=2.10.0",
+    "sse-starlette>=2.2.1",
+    "aiosqlite>=0.20.0",
+    "sqlalchemy>=2.0.36",
+    "httpx>=0.28.0",
+    "python-dotenv>=1.0.1",
 ]
 # Amazon Bedrock support (AWS SigV4 auth + boto3). Optional so the core install
 # stays lean: pip install "tradingagents[bedrock]".
@@ -82,6 +97,7 @@ ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
 "**/__init__.py" = ["F401"]   # intentional re-exports
+"backend/*" = ["B008"]         # FastAPI Depends in endpoint parameter defaults
 
 [tool.ruff.lint.isort]
 # Keep multiple aliased names from one module in a single combined import block

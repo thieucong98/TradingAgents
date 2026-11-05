@@ -1,7 +1,5 @@
-import os
-import threading
 import uuid
-import pytest
+
 from fastapi.testclient import TestClient
 
 from backend.app.core.database import db
@@ -13,8 +11,8 @@ from backend.app.core.security import (
     sanitize_ticker,
 )
 from backend.app.main import app
-from backend.app.workers.runner import run_analysis_task
 from backend.app.workers.job_manager import job_manager
+from backend.app.workers.runner import run_analysis_task
 
 client = TestClient(app)
 
