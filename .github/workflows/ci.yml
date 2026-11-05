@@ -33,7 +33,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev,web]"
       - name: Run test suite
-        run: pytest -q
+        run: pytest -q --tb=short -ra
 
   smoke-install:
     name: clean-install smoke
